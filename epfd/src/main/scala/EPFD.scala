@@ -8,24 +8,25 @@ import java.util.concurrent.TimeUnit
  * @author Amir Moulavi
  */
 
-class EPFD(name:String, var period: Long, delta: Int) extends Actor {
+class EPFD(val name:String, private var period: Long, val delta: Int) extends Actor {
 
   private var alive:Set[UUID] = Set()
   private var suspected:Set[UUID] = Set()
-
+  private var map:Map[UUID, String] = Map()
   private var actors:Set[UUID] = registry.actorsFor[EPFD].map{_.uuid}.toSet - self.uuid
 
-  EventHandler.notify(name + " Started")
+  log("started")
 
-  Scheduler.scheduleOnce( () => {sendOutHeartbeats}, period, TimeUnit.SECONDS)
+  sendOutHeartbeats
 
   def receive = {
     case Heartbeat(uuid) =>
       add(uuid)
       self reply Alive(self.uuid, name)
-    case Alive(uuid, n) =>
+    case Alive(uuid, actor) =>
       alive += uuid
-      EventHandler.notify(name + ": " + n + " is alive!")
+      update(uuid, actor)
+      log(actor + " is alive!")
     case event: ActorRegistered => add(event.actor.uuid)
     case event: ActorUnregistered => actors -= event.actor.uuid
   }
@@ -42,17 +43,32 @@ class EPFD(name:String, var period: Long, delta: Int) extends Actor {
     Scheduler.scheduleOnce( () => {sendOutHeartbeats}, period, TimeUnit.SECONDS)
   }
 
-  def add(uuid:UUID) = {
+  def add(uuid:UUID) {
     if (uuid != self.uuid)
       actors += uuid
   }
 
-  def suspect(uuid:UUID) = {
+  def suspect(uuid:UUID) {
+    log("suspected " + get(uuid))
     suspected += uuid
   }
 
-  def unsuspect(uuid:UUID) = {
+  def unsuspect(uuid:UUID) {
+    log("restored " + get(uuid))
     suspected -= uuid
+  }
+
+  def update(uuid:UUID, name:String) {
+    map += uuid -> name
+    add(uuid)
+  }
+
+  def get(uuid:UUID):String = {
+    map.getOrElse(uuid, uuid.toString)
+  }
+
+  def log(msg:Any) {
+    EventHandler.notify(name + ": " + msg)
   }
 
 }
